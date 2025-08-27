@@ -24,6 +24,11 @@
     .saved-item { background: #f0f9ff; border: 1px solid #bae6fd; margin-bottom: 12px; }
     .saved-date { font-size: 11px; color: #64748b; margin-top: 8px; }
     .empty-state { text-align: center; padding: 40px 20px; color: #9ca3af; }
+    .reflection-section { margin-top: 12px; padding-top: 12px; border-top: 1px solid #e5e7eb; }
+    .reflection-label { font-weight: 600; color: #374151; margin-bottom: 6px; font-size: 14px; }
+    .reflection-text { background: #f9fafb; border: 1px solid #d1d5db; border-radius: 6px; padding: 8px; font-size: 13px; line-height: 1.4; }
+    .reflection-input { width: 100%; min-height: 60px; font-size: 13px; padding: 8px; border-radius: 6px; border: 1px solid #d1d5db; resize: vertical; }
+    .reflection-buttons { margin-top: 8px; }
   </style>
 </head>
 <body>
@@ -72,7 +77,7 @@
     }
     function saveItem(item) {
       const data = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
-      data.push({ ...item, id: crypto.randomUUID(), savedAt: new Date().toISOString() });
+      data.push({ ...item, id: crypto.randomUUID(), savedAt: new Date().toISOString(), reflection: '' });
       localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
       loadSaved();
     }
@@ -81,6 +86,14 @@
       const next = data.filter(x => x.id !== id);
       localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
       loadSaved();
+    }
+    function updateReflection(id, reflection) {
+      const data = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
+      const item = data.find(x => x.id === id);
+      if (item) {
+        item.reflection = reflection;
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+      }
     }
     function renderSaved(items) {
       savedEl.innerHTML = '';
@@ -102,11 +115,70 @@
           <p>${item.description}</p>
           ${item.steps?.length ? '<ul class="steps">' + item.steps.map(s => '<li>' + s + '</li>').join('') + '</ul>' : ''}
           <div class="saved-date">Gemt: ${new Date(item.savedAt).toLocaleDateString('da-DK')} kl. ${new Date(item.savedAt).toLocaleTimeString('da-DK', {hour: '2-digit', minute: '2-digit'})}</div>
+          <div class="reflection-section">
+            <div class="reflection-label">💭 Mine refleksioner:</div>
+            ${item.reflection ? 
+              `<div class="reflection-text">${item.reflection}</div>
+               <div class="reflection-buttons">
+                 <button class="secondary" data-edit-id="${item.id}">Rediger reflektion</button>
+               </div>` :
+              `<textarea class="reflection-input" placeholder="Skriv dine tanker og refleksioner om dette tiltag..." data-reflection-id="${item.id}"></textarea>
+               <div class="reflection-buttons">
+                 <button data-save-reflection-id="${item.id}">Gem reflektion</button>
+               </div>`
+            }
+          </div>
           <div class="row" style="margin-top:10px">
             <button class="secondary" data-id="${item.id}">Slet</button>
           </div>
         `;
-        card.querySelector('button').onclick = () => removeSaved(item.id);
+        
+        // Delete button
+        card.querySelector('button[data-id]').onclick = () => removeSaved(item.id);
+        
+        // Reflection functionality
+        const saveReflectionBtn = card.querySelector(`button[data-save-reflection-id="${item.id}"]`);
+        const editReflectionBtn = card.querySelector(`button[data-edit-id="${item.id}"]`);
+        const reflectionInput = card.querySelector(`textarea[data-reflection-id="${item.id}"]`);
+        
+        if (saveReflectionBtn && reflectionInput) {
+          saveReflectionBtn.onclick = () => {
+            const reflection = reflectionInput.value.trim();
+            if (reflection) {
+              updateReflection(item.id, reflection);
+              loadSaved();
+            }
+          };
+        }
+        
+        if (editReflectionBtn) {
+          editReflectionBtn.onclick = () => {
+            const reflectionSection = card.querySelector('.reflection-section');
+            reflectionSection.innerHTML = `
+              <div class="reflection-label">💭 Mine refleksioner:</div>
+              <textarea class="reflection-input" data-reflection-id="${item.id}">${item.reflection}</textarea>
+              <div class="reflection-buttons">
+                <button data-save-reflection-id="${item.id}">Gem ændringer</button>
+                <button class="secondary" data-cancel-edit-id="${item.id}">Annuller</button>
+              </div>
+            `;
+            
+            const newSaveBtn = reflectionSection.querySelector(`button[data-save-reflection-id="${item.id}"]`);
+            const cancelBtn = reflectionSection.querySelector(`button[data-cancel-edit-id="${item.id}"]`);
+            const newInput = reflectionSection.querySelector(`textarea[data-reflection-id="${item.id}"]`);
+            
+            newSaveBtn.onclick = () => {
+              const reflection = newInput.value.trim();
+              updateReflection(item.id, reflection);
+              loadSaved();
+            };
+            
+            cancelBtn.onclick = () => {
+              loadSaved();
+            };
+          };
+        }
+        
         savedEl.appendChild(card);
       });
     }
