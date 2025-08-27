@@ -1,0 +1,176 @@
+<!doctype html>
+<html lang="da">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Læringsplan-assistent (MVP)</title>
+  <style>
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; line-height: 1.45; margin: 0; background: #f6f7f9; }
+    header { background: white; border-bottom: 1px solid #e5e7eb; padding: 16px 20px; position: sticky; top: 0; }
+    main { max-width: 980px; margin: 0 auto; padding: 20px; }
+    .card { background: white; border: 1px solid #e5e7eb; border-radius: 10px; padding: 16px; margin: 12px 0; box-shadow: 0 1px 2px rgba(0,0,0,0.04); }
+    textarea { width: 100%; min-height: 180px; font-size: 14px; padding: 10px; border-radius: 8px; border: 1px solid #d1d5db; }
+    button { cursor: pointer; border: 1px solid #111827; background: #111827; color: white; padding: 10px 14px; border-radius: 8px; font-weight: 600; }
+    button.secondary { background: white; color: #111827; border-color: #d1d5db; }
+    .row { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+    .muted { color: #6b7280; font-size: 13px; }
+    .tag { display: inline-block; font-size: 12px; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; border: 1px solid #c7d2fe; margin-right: 8px; }
+    .list { display: grid; gap: 10px; }
+    .steps li { margin-left: 18px; }
+    .saved { background: #f9fafb; border: 1px dashed #d1d5db; }
+    .header-title { font-weight: 700; }
+    .right { margin-left: auto; }
+    a { color: #0f766e; text-decoration: none; }
+  </style>
+</head>
+<body>
+  <header class="row">
+    <div class="header-title">📘 Læringsplan-assistent (MVP)</div>
+    <div class="right muted">Lokalt gemte tiltag · ingen login</div>
+  </header>
+  <main>
+    <section class="card">
+      <h2>Indsæt læringsplan</h2>
+      <p class="muted">Tip: Du kan også eksportere Google Docs til .txt og indsætte teksten her.</p>
+      <textarea id="plan" placeholder="Indsæt din læringsplan her..."></textarea>
+      <div class="row" style="margin-top:12px">
+        <button id="generateBtn">Foreslå 3 tiltag</button>
+        <button class="secondary" id="clearBtn">Ryd</button>
+        <span id="status" class="muted"></span>
+      </div>
+    </section>
+
+    <section class="card">
+      <h3>Forslag</h3>
+      <div id="suggestions" class="list"></div>
+    </section>
+
+    <section class="card saved">
+      <h3>Gemte tiltag</h3>
+      <p class="muted">Gemte elementer ligger i din browser (Local Storage). Du kan eksportere/importere nedenfor.</p>
+      <div id="saved" class="list"></div>
+      <div class="row" style="margin-top:10px">
+        <button id="exportBtn" class="secondary">Eksportér JSON</button>
+        <input type="file" id="importFile" accept="application/json" />
+      </div>
+    </section>
+  </main>
+  <script>
+    const el = (id) => document.getElementById(id);
+    const plan = el('plan');
+    const statusEl = el('status');
+    const suggestionsEl = el('suggestions');
+    const savedEl = el('saved');
+    const STORAGE_KEY = 'lp_saved_actions_v1';
+
+    function loadSaved() {
+      const data = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
+      renderSaved(data);
+    }
+    function saveItem(item) {
+      const data = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
+      data.push({ ...item, id: crypto.randomUUID(), savedAt: new Date().toISOString() });
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+      loadSaved();
+    }
+    function removeSaved(id) {
+      const data = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
+      const next = data.filter(x => x.id !== id);
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+      loadSaved();
+    }
+    function renderSaved(items) {
+      savedEl.innerHTML = '';
+      if (!items.length) {
+        savedEl.innerHTML = '<div class="muted">Ingen gemte tiltag endnu.</div>';
+        return;
+      }
+      items.forEach(item => {
+        const card = document.createElement('div');
+        card.className = 'card';
+        card.innerHTML = \`
+          <div class="row" style="justify-content:space-between">
+            <strong>\${item.title}</strong>
+            <span>
+              <span class="tag">Impact: \${item.impact}</span>
+              <span class="tag">Effort: \${item.effort}</span>
+            </span>
+          </div>
+          <p>\${item.description}</p>
+          \${item.steps?.length ? '<ul class="steps">' + item.steps.map(s => '<li>' + s + '</li>').join('') + '</ul>' : ''}
+          <div class="row" style="margin-top:10px">
+            <button class="secondary" data-id="\${item.id}">Slet</button>
+          </div>
+        \`;
+        card.querySelector('button').onclick = () => removeSaved(item.id);
+        savedEl.appendChild(card);
+      });
+    }
+
+    async function generate() {
+      const text = plan.value.trim();
+      if (text.length < 50) { alert('Indsæt en længere læringsplan.'); return; }
+      statusEl.textContent = 'Genererer forslag…';
+      suggestionsEl.innerHTML = '';
+      try {
+        const res = await fetch('/api/generate', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({ planText: text })
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data?.error || 'Fejl');
+
+        (data.actions || []).forEach(a => {
+          const card = document.createElement('div');
+          card.className = 'card';
+          card.innerHTML = \`
+            <div class="row" style="justify-content:space-between">
+              <strong>\${a.title}</strong>
+              <span>
+                <span class="tag">Impact: \${a.impact}</span>
+                <span class="tag">Effort: \${a.effort}</span>
+              </span>
+            </div>
+            <p>\${a.description}</p>
+            \${a.steps?.length ? '<ul class="steps">' + a.steps.map(s => '<li>' + s + '</li>').join('') + '</ul>' : ''}
+            <div class="row" style="margin-top:10px">
+              <button>Gem</button>
+            </div>
+          \`;
+          card.querySelector('button').onclick = () => saveItem(a);
+          suggestionsEl.appendChild(card);
+        });
+        statusEl.textContent = '';
+      } catch (e) {
+        console.error(e);
+        statusEl.textContent = 'Fejl: ' + e.message;
+      }
+    }
+
+    el('generateBtn').onclick = generate;
+    el('clearBtn').onclick = () => { plan.value = ''; suggestionsEl.innerHTML = ''; statusEl.textContent=''; };
+    el('exportBtn').onclick = () => {
+      const data = localStorage.getItem(STORAGE_KEY) || '[]';
+      const blob = new Blob([data], { type: 'application/json' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = 'gemte-tiltag.json';
+      a.click();
+    };
+    el('importFile').onchange = async (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      const text = await file.text();
+      try {
+        const arr = JSON.parse(text);
+        if (!Array.isArray(arr)) throw new Error('Ugyldigt format.');
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(arr));
+        loadSaved();
+      } catch (err) { alert('Kunne ikke importere: ' + err.message); }
+    };
+
+    loadSaved();
+  </script>
+</body>
+</html>
