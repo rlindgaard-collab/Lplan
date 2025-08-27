@@ -21,6 +21,9 @@
     .header-title { font-weight: 700; }
     .right { margin-left: auto; }
     a { color: #0f766e; text-decoration: none; }
+    .saved-item { background: #f0f9ff; border: 1px solid #bae6fd; margin-bottom: 12px; }
+    .saved-date { font-size: 11px; color: #64748b; margin-top: 8px; }
+    .empty-state { text-align: center; padding: 40px 20px; color: #9ca3af; }
   </style>
 </head>
 <body>
@@ -47,7 +50,7 @@
 
     <section class="card saved">
       <h3>Gemte tiltag</h3>
-      <p class="muted">Gemte elementer ligger i din browser (Local Storage). Du kan eksportere/importere nedenfor.</p>
+      <p class="muted">Dine gemte tiltag ligger sikkert i browseren (Local Storage). Du kan eksportere/importere nedenfor.</p>
       <div id="saved" class="list"></div>
       <div class="row" style="margin-top:10px">
         <button id="exportBtn" class="secondary">Eksportér JSON</button>
@@ -82,15 +85,15 @@
     function renderSaved(items) {
       savedEl.innerHTML = '';
       if (!items.length) {
-        savedEl.innerHTML = '<div class="muted">Ingen gemte tiltag endnu.</div>';
+        savedEl.innerHTML = '<div class="empty-state">📝 Ingen gemte tiltag endnu.<br><small>Generér forslag ovenfor og klik "Gem" for at tilføje dem her.</small></div>';
         return;
       }
       items.forEach(item => {
         const card = document.createElement('div');
-        card.className = 'card';
+        card.className = 'card saved-item';
         card.innerHTML = `
           <div class="row" style="justify-content:space-between">
-            <strong>${item.title}</strong>
+            <strong>✅ ${item.title}</strong>
             <span>
               <span class="tag">Impact: ${item.impact}</span>
               <span class="tag">Effort: ${item.effort}</span>
@@ -98,6 +101,7 @@
           </div>
           <p>${item.description}</p>
           ${item.steps?.length ? '<ul class="steps">' + item.steps.map(s => '<li>' + s + '</li>').join('') + '</ul>' : ''}
+          <div class="saved-date">Gemt: ${new Date(item.savedAt).toLocaleDateString('da-DK')} kl. ${new Date(item.savedAt).toLocaleTimeString('da-DK', {hour: '2-digit', minute: '2-digit'})}</div>
           <div class="row" style="margin-top:10px">
             <button class="secondary" data-id="${item.id}">Slet</button>
           </div>
@@ -135,10 +139,18 @@
             <p>${a.description}</p>
             ${a.steps?.length ? '<ul class="steps">' + a.steps.map(s => '<li>' + s + '</li>').join('') + '</ul>' : ''}
             <div class="row" style="margin-top:10px">
-              <button>Gem</button>
+              <button>💾 Gem tiltag</button>
             </div>
           `;
-          card.querySelector('button').onclick = () => saveItem(a);
+          card.querySelector('button').onclick = () => {
+            saveItem(a);
+            card.querySelector('button').textContent = '✅ Gemt!';
+            card.querySelector('button').disabled = true;
+            setTimeout(() => {
+              card.querySelector('button').textContent = '💾 Gem tiltag';
+              card.querySelector('button').disabled = false;
+            }, 2000);
+          };
           suggestionsEl.appendChild(card);
         });
         statusEl.textContent = '';
@@ -149,7 +161,11 @@
     }
 
     el('generateBtn').onclick = generate;
-    el('clearBtn').onclick = () => { plan.value = ''; suggestionsEl.innerHTML = ''; statusEl.textContent=''; };
+    el('clearBtn').onclick = () => { 
+      plan.value = ''; 
+      suggestionsEl.innerHTML = ''; 
+      statusEl.textContent = ''; 
+    };
     el('exportBtn').onclick = () => {
       const data = localStorage.getItem(STORAGE_KEY) || '[]';
       const blob = new Blob([data], { type: 'application/json' });
@@ -167,6 +183,7 @@
         if (!Array.isArray(arr)) throw new Error('Ugyldigt format.');
         localStorage.setItem(STORAGE_KEY, JSON.stringify(arr));
         loadSaved();
+        alert('Tiltag importeret succesfuldt!');
       } catch (err) { alert('Kunne ikke importere: ' + err.message); }
     };
 
