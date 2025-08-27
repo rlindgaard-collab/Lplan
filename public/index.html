@@ -88,20 +88,20 @@
       items.forEach(item => {
         const card = document.createElement('div');
         card.className = 'card';
-        card.innerHTML = \`
+        card.innerHTML = `
           <div class="row" style="justify-content:space-between">
-            <strong>\${item.title}</strong>
+            <strong>${item.title}</strong>
             <span>
-              <span class="tag">Impact: \${item.impact}</span>
-              <span class="tag">Effort: \${item.effort}</span>
+              <span class="tag">Impact: ${item.impact}</span>
+              <span class="tag">Effort: ${item.effort}</span>
             </span>
           </div>
-          <p>\${item.description}</p>
-          \${item.steps?.length ? '<ul class="steps">' + item.steps.map(s => '<li>' + s + '</li>').join('') + '</ul>' : ''}
+          <p>${item.description}</p>
+          ${item.steps?.length ? '<ul class="steps">' + item.steps.map(s => '<li>' + s + '</li>').join('') + '</ul>' : ''}
           <div class="row" style="margin-top:10px">
-            <button class="secondary" data-id="\${item.id}">Slet</button>
+            <button class="secondary" data-id="${item.id}">Slet</button>
           </div>
-        \`;
+        `;
         card.querySelector('button').onclick = () => removeSaved(item.id);
         savedEl.appendChild(card);
       });
@@ -124,20 +124,20 @@
         (data.actions || []).forEach(a => {
           const card = document.createElement('div');
           card.className = 'card';
-          card.innerHTML = \`
+          card.innerHTML = `
             <div class="row" style="justify-content:space-between">
-              <strong>\${a.title}</strong>
+              <strong>${a.title}</strong>
               <span>
-                <span class="tag">Impact: \${a.impact}</span>
-                <span class="tag">Effort: \${a.effort}</span>
+                <span class="tag">Impact: ${a.impact}</span>
+                <span class="tag">Effort: ${a.effort}</span>
               </span>
             </div>
-            <p>\${a.description}</p>
-            \${a.steps?.length ? '<ul class="steps">' + a.steps.map(s => '<li>' + s + '</li>').join('') + '</ul>' : ''}
+            <p>${a.description}</p>
+            ${a.steps?.length ? '<ul class="steps">' + a.steps.map(s => '<li>' + s + '</li>').join('') + '</ul>' : ''}
             <div class="row" style="margin-top:10px">
               <button>Gem</button>
             </div>
-          \`;
+          `;
           card.querySelector('button').onclick = () => saveItem(a);
           suggestionsEl.appendChild(card);
         });
