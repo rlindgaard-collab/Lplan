@@ -57,10 +57,6 @@
       <h3>Gemte tiltag</h3>
       <p class="muted">Dine gemte tiltag ligger sikkert i browseren (Local Storage). Du kan eksportere/importere nedenfor.</p>
       <div id="saved" class="list"></div>
-      <div class="row" style="margin-top:10px">
-        <button id="exportBtn" class="secondary">Eksportér JSON</button>
-        <input type="file" id="importFile" accept="application/json" />
-      </div>
     </section>
   </main>
   <script>
@@ -237,26 +233,6 @@
       plan.value = ''; 
       suggestionsEl.innerHTML = ''; 
       statusEl.textContent = ''; 
-    };
-    el('exportBtn').onclick = () => {
-      const data = localStorage.getItem(STORAGE_KEY) || '[]';
-      const blob = new Blob([data], { type: 'application/json' });
-      const a = document.createElement('a');
-      a.href = URL.createObjectURL(blob);
-      a.download = 'gemte-tiltag.json';
-      a.click();
-    };
-    el('importFile').onchange = async (e) => {
-      const file = e.target.files[0];
-      if (!file) return;
-      const text = await file.text();
-      try {
-        const arr = JSON.parse(text);
-        if (!Array.isArray(arr)) throw new Error('Ugyldigt format.');
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(arr));
-        loadSaved();
-        alert('Tiltag importeret succesfuldt!');
-      } catch (err) { alert('Kunne ikke importere: ' + err.message); }
     };
 
     loadSaved();
