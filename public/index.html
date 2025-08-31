@@ -227,7 +227,7 @@
             ">
           </div>
           <div style="padding-top: 28px;">
-            <button id="extractBtn" class="secondary" disabled>Læs PDF</button>
+            <button id="generateFromPdfBtn" class="secondary" disabled>Lav forslag fra PDF</button>
           </div>
         </div>
         <div id="pdfStatus" class="muted" style="margin-top: 8px;"></div>
@@ -259,7 +259,7 @@
     const el = (id) => document.getElementById(id);
     const plan = el('plan');
     const pdfUpload = el('pdfUpload');
-    const extractBtn = el('extractBtn');
+    const generateFromPdfBtn = el('generateFromPdfBtn');
     const pdfStatus = el('pdfStatus');
     const statusEl = el('status');
     const suggestionsEl = el('suggestions');
@@ -270,48 +270,78 @@
     pdfUpload.onchange = () => {
       const file = pdfUpload.files[0];
       if (file) {
-        extractBtn.disabled = false;
+        generateFromPdfBtn.disabled = false;
         pdfStatus.textContent = `📄 ${file.name} (${(file.size / 1024 / 1024).toFixed(1)} MB)`;
       } else {
-        extractBtn.disabled = true;
+        generateFromPdfBtn.disabled = true;
         pdfStatus.textContent = '';
       }
     };
 
-    async function extractPDF() {
+    async function generateFromPDF() {
       const file = pdfUpload.files[0];
       if (!file) return;
       
-      pdfStatus.textContent = 'Læser PDF...';
-      extractBtn.disabled = true;
+      pdfStatus.textContent = 'Genererer forslag fra PDF...';
+      generateFromPdfBtn.disabled = true;
+      suggestionsEl.innerHTML = '';
       
       try {
         const formData = new FormData();
         formData.append('pdf', file);
         
-        const res = await fetch('/api/extract-pdf', {
+        const res = await fetch('/api/generate-from-pdf', {
           method: 'POST',
           body: formData
         });
         
         const data = await res.json();
-        if (!res.ok) throw new Error(data?.error || 'Fejl ved læsning af PDF');
+        if (!res.ok) throw new Error(data?.error || 'Fejl ved generering af forslag');
         
-        plan.value = data.text;
-        pdfStatus.textContent = `✅ PDF læst! ${data.text.length} tegn ekstraheret.`;
+        // Render suggestions
+        (data.actions || []).forEach(a => {
+          const card = document.createElement('div');
+          card.className = 'card';
+          card.innerHTML = `
+            <div class="row" style="justify-content:space-between">
+              <strong>${a.title}</strong>
+              <span>
+                <span class="tag">Impact: ${a.impact}</span>
+                <span class="tag">Effort: ${a.effort}</span>
+              </span>
+            </div>
+            <p>${a.description}</p>
+            ${a.steps?.length ? '<ul class="steps">' + a.steps.map(s => '<li>' + s + '</li>').join('') + '</ul>' : ''}
+            <div class="row" style="margin-top:10px">
+              <button>💾 Gem tiltag</button>
+            </div>
+          `;
+          card.querySelector('button').onclick = () => {
+            saveItem(a);
+            card.querySelector('button').textContent = '✅ Gemt!';
+            card.querySelector('button').disabled = true;
+            setTimeout(() => {
+              card.querySelector('button').textContent = '💾 Gem tiltag';
+              card.querySelector('button').disabled = false;
+            }, 2000);
+          };
+          suggestionsEl.appendChild(card);
+        });
+        
+        pdfStatus.textContent = `✅ ${data.actions?.length || 0} forslag genereret fra PDF!`;
         
         // Clear file input
         pdfUpload.value = '';
-        extractBtn.disabled = true;
+        generateFromPdfBtn.disabled = true;
         
       } catch (err) {
         console.error(err);
-        pdfStatus.textContent = `❌ Fejl: ${err.message}`;
-        extractBtn.disabled = false;
+        pdfStatus.textContent = `❌ Fejl ved læsning af PDF: ${err.message}`;
+        generateFromPdfBtn.disabled = false;
       }
     }
 
-    extractBtn.onclick = extractPDF;
+    generateFromPdfBtn.onclick = generateFromPDF;
 
     function loadSaved() {
       const data = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
@@ -479,7 +509,7 @@
       plan.value = ''; 
       pdfUpload.value = '';
       pdfStatus.textContent = '';
-      extractBtn.disabled = true;
+      generateFromPdfBtn.disabled = true;
       suggestionsEl.innerHTML = ''; 
       statusEl.textContent = ''; 
     };
