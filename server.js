@@ -1,122 +1,414 @@
-import express from 'express';
-import dotenv from 'dotenv';
-import bodyParser from 'body-parser';
-import rateLimit from 'express-rate-limit';
-import path from 'path';
-import { fileURLToPath } from 'url';
-import cors from 'cors';
-import OpenAI from 'openai';
-
-dotenv.config();
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-
-const app = express();
-const port = process.env.PORT || 3000;
-
-// Basic CORS (same-origin by default; tweak if hosting frontend separately)
-app.use(cors());
-app.use(bodyParser.json({ limit: '1mb' }));
-
-// Serve static files
-app.use(express.static(path.join(__dirname, 'public')));
-
-// Simple daily request cap per IP to control costs (adjust as needed)
-const dailyLimiter = rateLimit({
-  windowMs: 24 * 60 * 60 * 1000, // 24 hours
-  limit: parseInt(process.env.DAILY_REQ_LIMIT || '50', 10), // e.g., 50 requests/day/IP
-  standardHeaders: true,
-  legacyHeaders: false,
-  message: { error: 'Forbrugsloft nået for i dag. Prøv igen i morgen.' }
-});
-
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY
-});
-
-// Health check
-app.get('/api/health', (_req, res) => {
-  res.json({ ok: true });
-});
-
-// Generate actionable suggestions from a learning plan
-app.post('/api/generate', dailyLimiter, async (req, res) => {
-  try {
-    const { planText } = req.body || {};
-    if (!planText || typeof planText !== 'string' || planText.trim().length < 50) {
-      return res.status(400).json({ error: 'Indsæt en længere læringsplan (min. ~50 tegn).' });
+<!doctype html>
+<html lang="da">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Læringsplan-assistent (MVP)</title>
+  <style>
+    body { 
+      font-family: 'Inter', system-ui, -apple-system, Segoe UI, Roboto, sans-serif; 
+      line-height: 1.6; 
+      margin: 0; 
+      background: linear-gradient(135deg, #0f0f23 0%, #1a1a2e 100%); 
+      color: #e2e8f0;
+      min-height: 100vh;
     }
-    if (!process.env.OPENAI_API_KEY) {
-      return res.status(500).json({ error: 'OPENAI_API_KEY mangler på serveren.' });
+    header { 
+      background: rgba(15, 15, 35, 0.95); 
+      backdrop-filter: blur(10px);
+      border-bottom: 1px solid #334155; 
+      padding: 20px 24px; 
+      position: sticky; 
+      top: 0; 
+      z-index: 100;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+    }
+    main { max-width: 980px; margin: 0 auto; padding: 20px; }
+    .card { 
+      background: rgba(30, 41, 59, 0.8); 
+      backdrop-filter: blur(10px);
+      border: 1px solid #475569; 
+      border-radius: 16px; 
+      padding: 24px; 
+      margin: 16px 0; 
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+      transition: all 0.3s ease;
+    }
+    .card:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 12px 40px rgba(0, 0, 0, 0.4);
+      border-color: #64748b;
+    }
+    textarea { 
+      width: 100%; 
+      min-height: 180px; 
+      font-size: 14px; 
+      padding: 16px; 
+      border-radius: 12px; 
+      border: 1px solid #475569; 
+      background: rgba(15, 23, 42, 0.8);
+      color: #e2e8f0;
+      transition: all 0.3s ease;
+      font-family: inherit;
+    }
+    textarea:focus {
+      outline: none;
+      border-color: #3b82f6;
+      box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+    }
+    textarea::placeholder {
+      color: #64748b;
+    }
+    button { 
+      cursor: pointer; 
+      border: none; 
+      background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%); 
+      color: white; 
+      padding: 12px 20px; 
+      border-radius: 10px; 
+      font-weight: 600; 
+      font-size: 14px;
+      transition: all 0.3s ease;
+      box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
+    }
+    button:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 6px 20px rgba(59, 130, 246, 0.4);
+    }
+    button:active {
+      transform: translateY(0);
+    }
+    button.secondary { 
+      background: rgba(51, 65, 85, 0.8); 
+      color: #e2e8f0; 
+      border: 1px solid #475569;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+    }
+    button.secondary:hover {
+      background: rgba(71, 85, 105, 0.9);
+      border-color: #64748b;
+    }
+    .row { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+    .muted { color: #94a3b8; font-size: 13px; }
+    .tag { 
+      display: inline-block; 
+      font-size: 12px; 
+      padding: 6px 12px; 
+      border-radius: 20px; 
+      background: linear-gradient(135deg, #1e293b 0%, #334155 100%); 
+      color: #e2e8f0; 
+      border: 1px solid #475569; 
+      margin-right: 8px;
+      font-weight: 500;
+    }
+    .list { display: grid; gap: 10px; }
+    .steps li { margin-left: 18px; }
+    .saved { 
+      background: rgba(20, 30, 48, 0.6); 
+      border: 1px dashed #475569; 
+    }
+    .header-title { 
+      font-weight: 700; 
+      font-size: 18px;
+      background: linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+    .right { margin-left: auto; }
+    a { color: #3b82f6; text-decoration: none; }
+    a:hover { color: #60a5fa; }
+    .saved-item { 
+      background: rgba(15, 23, 42, 0.8); 
+      border: 1px solid #1e40af; 
+      margin-bottom: 12px;
+      box-shadow: 0 4px 16px rgba(30, 64, 175, 0.2);
+    }
+    .saved-date { font-size: 11px; color: #64748b; margin-top: 8px; }
+    .empty-state { 
+      text-align: center; 
+      padding: 40px 20px; 
+      color: #64748b; 
+      font-style: italic;
+    }
+    .reflection-section { 
+      margin-top: 16px; 
+      padding-top: 16px; 
+      border-top: 1px solid #475569; 
+    }
+    .reflection-label { 
+      font-weight: 600; 
+      color: #e2e8f0; 
+      margin-bottom: 8px; 
+      font-size: 14px; 
+    }
+    .reflection-text { 
+      background: rgba(15, 23, 42, 0.6); 
+      border: 1px solid #334155; 
+      border-radius: 8px; 
+      padding: 12px; 
+      font-size: 13px; 
+      line-height: 1.5;
+      color: #cbd5e1;
+    }
+    .reflection-input { 
+      width: 100%; 
+      min-height: 80px; 
+      font-size: 13px; 
+      padding: 12px; 
+      border-radius: 8px; 
+      border: 1px solid #475569; 
+      resize: vertical; 
+      background: rgba(15, 23, 42, 0.8);
+      color: #e2e8f0;
+      font-family: inherit;
+      transition: all 0.3s ease;
+    }
+    .reflection-input:focus {
+      outline: none;
+      border-color: #3b82f6;
+      box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+    }
+    .reflection-input::placeholder {
+      color: #64748b;
+    }
+    .reflection-buttons { margin-top: 8px; }
+    h2, h3 {
+      color: #f1f5f9;
+      margin-top: 0;
+    }
+    h2 {
+      font-size: 24px;
+      font-weight: 700;
+    }
+    h3 {
+      font-size: 20px;
+      font-weight: 600;
+    }
+    p {
+      color: #cbd5e1;
+      line-height: 1.6;
+    }
+    strong {
+      color: #f1f5f9;
+    }
+    ul.steps {
+      color: #cbd5e1;
+    }
+    ul.steps li {
+      margin-bottom: 4px;
+    }
+  </style>
+</head>
+<body>
+  <header class="row">
+    <div class="header-title">📘 Læringsplan-assistent (MVP)</div>
+    <div class="right muted">Lokalt gemte tiltag · ingen login</div>
+  </header>
+  <main>
+    <section class="card">
+      <h2>Indsæt læringsplan</h2>
+      <p class="muted">Tip: Du kan også eksportere Google Docs til .txt og indsætte teksten her.</p>
+      
+      <div style="margin-bottom: 8px;">
+        <label for="plan" style="display: block; font-weight: 600; color: #e2e8f0;">✏️ Skriv/indsæt læringsplan:</label>
+      </div>
+      <textarea id="plan" placeholder="Indsæt din læringsplan her..."></textarea>
+      <div class="row" style="margin-top:12px">
+        <button id="generateBtn">Foreslå 3 tiltag</button>
+        <button class="secondary" id="clearBtn">Ryd</button>
+        <span id="status" class="muted"></span>
+      </div>
+    </section>
+
+    <section class="card">
+      <h3>Forslag</h3>
+      <div id="suggestions" class="list"></div>
+    </section>
+
+    <section class="card saved">
+      <h3>Gemte tiltag</h3>
+      <p class="muted">Dine gemte tiltag ligger sikkert i browseren (Local Storage). Du kan eksportere/importere nedenfor.</p>
+      <div id="saved" class="list"></div>
+    </section>
+  </main>
+  <script>
+    const el = (id) => document.getElementById(id);
+    const plan = el('plan');
+    const statusEl = el('status');
+    const suggestionsEl = el('suggestions');
+    const savedEl = el('saved');
+    const STORAGE_KEY = 'lp_saved_actions_v1';
+
+    function loadSaved() {
+      const data = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
+      renderSaved(data);
+    }
+    function saveItem(item) {
+      const data = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
+      data.push({ ...item, id: crypto.randomUUID(), savedAt: new Date().toISOString(), reflection: '' });
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+      loadSaved();
+    }
+    function removeSaved(id) {
+      const data = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
+      const next = data.filter(x => x.id !== id);
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+      loadSaved();
+    }
+    function updateReflection(id, reflection) {
+      const data = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
+      const item = data.find(x => x.id === id);
+      if (item) {
+        item.reflection = reflection;
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+      }
+    }
+    function renderSaved(items) {
+      savedEl.innerHTML = '';
+      if (!items.length) {
+        savedEl.innerHTML = '<div class="empty-state">📝 Ingen gemte tiltag endnu.<br><small>Generér forslag ovenfor og klik "Gem" for at tilføje dem her.</small></div>';
+        return;
+      }
+      items.forEach(item => {
+        const card = document.createElement('div');
+        card.className = 'card saved-item';
+        card.innerHTML = `
+          <div class="row" style="justify-content:space-between">
+            <strong>✅ ${item.title}</strong>
+            <span>
+              <span class="tag">Impact: ${item.impact}</span>
+              <span class="tag">Effort: ${item.effort}</span>
+            </span>
+          </div>
+          <p>${item.description}</p>
+          ${item.steps?.length ? '<ul class="steps">' + item.steps.map(s => '<li>' + s + '</li>').join('') + '</ul>' : ''}
+          <div class="saved-date">Gemt: ${new Date(item.savedAt).toLocaleDateString('da-DK')} kl. ${new Date(item.savedAt).toLocaleTimeString('da-DK', {hour: '2-digit', minute: '2-digit'})}</div>
+          <div class="reflection-section">
+            <div class="reflection-label">💭 Mine refleksioner:</div>
+            ${item.reflection ? 
+              `<div class="reflection-text">${item.reflection}</div>
+               <div class="reflection-buttons">
+                 <button class="secondary" data-edit-id="${item.id}">Rediger reflektion</button>
+               </div>` :
+              `<textarea class="reflection-input" placeholder="Skriv dine tanker og refleksioner om dette tiltag..." data-reflection-id="${item.id}"></textarea>
+               <div class="reflection-buttons">
+                 <button data-save-reflection-id="${item.id}">Gem reflektion</button>
+               </div>`
+            }
+          </div>
+          <div class="row" style="margin-top:10px">
+            <button class="secondary" data-id="${item.id}">Slet</button>
+          </div>
+        `;
+        
+        // Delete button
+        card.querySelector('button[data-id]').onclick = () => removeSaved(item.id);
+        
+        // Reflection functionality
+        const saveReflectionBtn = card.querySelector(`button[data-save-reflection-id="${item.id}"]`);
+        const editReflectionBtn = card.querySelector(`button[data-edit-id="${item.id}"]`);
+        const reflectionInput = card.querySelector(`textarea[data-reflection-id="${item.id}"]`);
+        
+        if (saveReflectionBtn && reflectionInput) {
+          saveReflectionBtn.onclick = () => {
+            const reflection = reflectionInput.value.trim();
+            if (reflection) {
+              updateReflection(item.id, reflection);
+              loadSaved();
+            }
+          };
+        }
+        
+        if (editReflectionBtn) {
+          editReflectionBtn.onclick = () => {
+            const reflectionSection = card.querySelector('.reflection-section');
+            reflectionSection.innerHTML = `
+              <div class="reflection-label">💭 Mine refleksioner:</div>
+              <textarea class="reflection-input" data-reflection-id="${item.id}">${item.reflection}</textarea>
+              <div class="reflection-buttons">
+                <button data-save-reflection-id="${item.id}">Gem ændringer</button>
+                <button class="secondary" data-cancel-edit-id="${item.id}">Annuller</button>
+              </div>
+            `;
+            
+            const newSaveBtn = reflectionSection.querySelector(`button[data-save-reflection-id="${item.id}"]`);
+            const cancelBtn = reflectionSection.querySelector(`button[data-cancel-edit-id="${item.id}"]`);
+            const newInput = reflectionSection.querySelector(`textarea[data-reflection-id="${item.id}"]`);
+            
+            newSaveBtn.onclick = () => {
+              const reflection = newInput.value.trim();
+              updateReflection(item.id, reflection);
+              loadSaved();
+            };
+            
+            cancelBtn.onclick = () => {
+              loadSaved();
+            };
+          };
+        }
+        
+        savedEl.appendChild(card);
+      });
     }
 
-    const systemPrompt = `
-Du er studievejleder-assistent. Du omdanner en læringsplan til tre konkrete tiltag.
-Svar i gyldig JSON med følgende struktur og intet andet:
-{
-  "actions": [
-    {
-      "title": "kort titel",
-      "description": "kort beskrivelse (1-2 sætninger)",
-      "impact": "Lav|Middel|Høj",
-      "effort": "Lav|Middel|Høj",
-      "steps": ["trin 1", "trin 2", "trin 3"]
-    },
-    ...
-  ]
-}
-Krav: præcise, gennemførbare trin. Ingen personfølsomme data. Dansk sprog.`.trim();
+    async function generate() {
+      const text = plan.value.trim();
+      if (text.length < 50) { alert('Indsæt en længere læringsplan.'); return; }
+      statusEl.textContent = 'Genererer forslag…';
+      suggestionsEl.innerHTML = '';
+      try {
+        const res = await fetch('/api/generate', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({ planText: text })
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data?.error || 'Fejl');
 
-    const userPrompt = planText.slice(0, 20000); // hard cap input size
-
-    // Use Chat Completions with JSON mode for broad compatibility
-    const completion = await openai.chat.completions.create({
-      model: process.env.OPENAI_MODEL || 'gpt-4o-mini',
-      response_format: { type: 'json_object' },
-      messages: [
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: userPrompt }
-      ],
-      temperature: 0.2
-    });
-
-    const content = completion?.choices?.[0]?.message?.content;
-    if (!content) {
-      return res.status(502).json({ error: 'Intet svar fra modellen.' });
-    }
-    let data;
-    try {
-      data = JSON.parse(content);
-    } catch (e) {
-      // Fallback: try to extract JSON block
-      const match = content.match(/\{[\s\S]*\}/);
-      if (match) {
-        data = JSON.parse(match[0]);
-      } else {
-        throw e;
+        (data.actions || []).forEach(a => {
+          const card = document.createElement('div');
+          card.className = 'card';
+          card.innerHTML = `
+            <div class="row" style="justify-content:space-between">
+              <strong>${a.title}</strong>
+              <span>
+                <span class="tag">Impact: ${a.impact}</span>
+                <span class="tag">Effort: ${a.effort}</span>
+              </span>
+            </div>
+            <p>${a.description}</p>
+            ${a.steps?.length ? '<ul class="steps">' + a.steps.map(s => '<li>' + s + '</li>').join('') + '</ul>' : ''}
+            <div class="row" style="margin-top:10px">
+              <button>💾 Gem tiltag</button>
+            </div>
+          `;
+          card.querySelector('button').onclick = () => {
+            saveItem(a);
+            card.querySelector('button').textContent = '✅ Gemt!';
+            card.querySelector('button').disabled = true;
+            setTimeout(() => {
+              card.querySelector('button').textContent = '💾 Gem tiltag';
+              card.querySelector('button').disabled = false;
+            }, 2000);
+          };
+          suggestionsEl.appendChild(card);
+        });
+        statusEl.textContent = '';
+      } catch (e) {
+        console.error(e);
+        statusEl.textContent = 'Fejl: ' + e.message;
       }
     }
 
-    // Basic validation and trimming
-    if (!data.actions || !Array.isArray(data.actions)) {
-      return res.status(502).json({ error: 'Modellen returnerede ikke forventet struktur.' });
-    }
-    data.actions = data.actions.slice(0, 3).map(a => ({
-      title: String(a.title || '').slice(0, 120),
-      description: String(a.description || '').slice(0, 500),
-      impact: ['Lav','Middel','Høj'].includes(a.impact) ? a.impact : 'Middel',
-      effort: ['Lav','Middel','Høj'].includes(a.effort) ? a.effort : 'Middel',
-      steps: Array.isArray(a.steps) ? a.steps.slice(0, 6).map(s => String(s).slice(0, 200)) : []
-    }));
+    el('generateBtn').onclick = generate;
+    el('clearBtn').onclick = () => { 
+      plan.value = ''; 
+      suggestionsEl.innerHTML = ''; 
+      statusEl.textContent = ''; 
+    };
 
-    res.json(data);
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'Noget gik galt. Prøv igen.' });
-  }
-});
-
-app.listen(port, () => {
-  console.log(`Server kører på http://localhost:${port}`);
-});
+    loadSaved();
+  </script>
+</body>
+</html>
