@@ -5,12 +5,15 @@ import { fileURLToPath } from 'url';
 import dotenv from 'dotenv';
 import multer from 'multer';
 import fs from 'fs';
-import * as pdfjsLib from 'pdfjs-dist/build/pdf.node.mjs';
+import { getDocument, GlobalWorkerOptions } from 'pdfjs-dist/build/pdf.mjs';
 
 dotenv.config();
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+
+// Configure PDF.js worker
+GlobalWorkerOptions.workerSrc = path.resolve(__dirname, 'node_modules/pdfjs-dist/build/pdf.worker.mjs');
 
 const app = express();
 const port = process.env.PORT || 3000;
@@ -43,7 +46,7 @@ app.post('/api/generate-from-pdf', upload.single('pdf'), async (req, res) => {
     const pdfBuffer = fs.readFileSync(req.file.path);
     
     // Parse PDF with pdfjs-dist
-    const loadingTask = pdfjsLib.getDocument({ data: pdfBuffer });
+    const loadingTask = getDocument({ data: pdfBuffer });
     const pdf = await loadingTask.promise;
     
     let fullText = '';
