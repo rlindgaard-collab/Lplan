@@ -210,30 +210,8 @@
       <h2>Indsæt læringsplan</h2>
       <p class="muted">Tip: Du kan også eksportere Google Docs til .txt og indsætte teksten her.</p>
       
-      <div class="upload-section" style="margin-bottom: 16px;">
-        <div class="row" style="gap: 16px; align-items: flex-start;">
-          <div style="flex: 1;">
-            <label for="pdfUpload" style="display: block; margin-bottom: 8px; font-weight: 600; color: #e2e8f0;">📄 Upload PDF:</label>
-            <input type="file" id="pdfUpload" accept=".pdf" style="
-              width: 100%; 
-              padding: 12px; 
-              border-radius: 8px; 
-              border: 1px solid #475569; 
-              background: rgba(15, 23, 42, 0.8);
-              color: #e2e8f0;
-              font-family: inherit;
-              font-size: 14px;
-              transition: all 0.3s ease;
-            ">
-          </div>
-          <div style="padding-top: 28px;">
-          </div>
-        </div>
-        <div id="pdfStatus" class="muted" style="margin-top: 8px;"></div>
-      </div>
-      
       <div style="margin-bottom: 8px;">
-        <label for="plan" style="display: block; font-weight: 600; color: #e2e8f0;">✏️ Eller skriv/indsæt tekst:</label>
+        <label for="plan" style="display: block; font-weight: 600; color: #e2e8f0;">✏️ Skriv/indsæt læringsplan:</label>
       </div>
       <textarea id="plan" placeholder="Indsæt din læringsplan her..."></textarea>
       <div class="row" style="margin-top:12px">
@@ -257,85 +235,10 @@
   <script>
     const el = (id) => document.getElementById(id);
     const plan = el('plan');
-    const pdfUpload = el('pdfUpload');
-    const pdfStatus = el('pdfStatus');
     const statusEl = el('status');
     const suggestionsEl = el('suggestions');
     const savedEl = el('saved');
     const STORAGE_KEY = 'lp_saved_actions_v1';
-
-    // PDF upload handling
-    pdfUpload.onchange = () => {
-      const file = pdfUpload.files[0];
-      if (file) {
-        pdfStatus.textContent = `📄 ${file.name} (${(file.size / 1024 / 1024).toFixed(1)} MB)`;
-      } else {
-        pdfStatus.textContent = '';
-      }
-    };
-
-    async function generateFromPDF() {
-      const file = pdfUpload.files[0];
-      if (!file) return;
-      
-      pdfStatus.textContent = 'Genererer forslag fra PDF...';
-      generateFromPdfBtn.disabled = true;
-      suggestionsEl.innerHTML = '';
-      
-      try {
-        const formData = new FormData();
-        formData.append('pdf', file);
-        
-        const res = await fetch('/api/generate-from-pdf', {
-          method: 'POST',
-          body: formData
-        });
-        
-        const data = await res.json();
-        if (!res.ok) throw new Error(data?.error || 'Fejl ved generering af forslag');
-        
-        // Render suggestions
-        (data.actions || []).forEach(a => {
-          const card = document.createElement('div');
-          card.className = 'card';
-          card.innerHTML = `
-            <div class="row" style="justify-content:space-between">
-              <strong>${a.title}</strong>
-              <span>
-                <span class="tag">Impact: ${a.impact}</span>
-                <span class="tag">Effort: ${a.effort}</span>
-              </span>
-            </div>
-            <p>${a.description}</p>
-            ${a.steps?.length ? '<ul class="steps">' + a.steps.map(s => '<li>' + s + '</li>').join('') + '</ul>' : ''}
-            <div class="row" style="margin-top:10px">
-              <button>💾 Gem tiltag</button>
-            </div>
-          `;
-          card.querySelector('button').onclick = () => {
-            saveItem(a);
-            card.querySelector('button').textContent = '✅ Gemt!';
-            card.querySelector('button').disabled = true;
-            setTimeout(() => {
-              card.querySelector('button').textContent = '💾 Gem tiltag';
-              card.querySelector('button').disabled = false;
-            }, 2000);
-          };
-          suggestionsEl.appendChild(card);
-        });
-        
-        pdfStatus.textContent = `✅ ${data.actions?.length || 0} forslag genereret fra PDF!`;
-        
-        // Clear file input
-        pdfUpload.value = '';
-        generateFromPdfBtn.disabled = true;
-        
-      } catch (err) {
-        console.error(err);
-        pdfStatus.textContent = `❌ Fejl ved læsning af PDF: ${err.message}`;
-        generateFromPdfBtn.disabled = false;
-      }
-    }
 
     function loadSaved() {
       const data = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
@@ -450,12 +353,10 @@
     }
 
     async function generate() {
-      const file = pdfUpload.files[0];
       const text = plan.value.trim();
       
-      // Check if we have either PDF or text
-      if (!file && text.length < 50) { 
-        alert('Indsæt en længere læringsplan eller upload en PDF.'); 
+      if (text.length < 50) { 
+        alert('Indsæt en længere læringsplan (mindst 50 tegn).'); 
         return; 
       }
       
@@ -463,25 +364,11 @@
       suggestionsEl.innerHTML = '';
       
       try {
-        let res;
-        
-        if (file) {
-          // Use PDF
-          const formData = new FormData();
-          formData.append('pdf', file);
-          
-          res = await fetch('/api/generate-from-pdf', {
-            method: 'POST',
-            body: formData
-          });
-        } else {
-          // Use text
-          res = await fetch('/api/generate', {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({ planText: text })
-          });
-        }
+        const res = await fetch('/api/generate', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({ planText: text })
+        });
         
         const data = await res.json();
         if (!res.ok) throw new Error(data?.error || 'Fejl');
@@ -516,23 +403,15 @@
         });
         statusEl.textContent = '';
         
-        // Clear inputs after successful generation
-        if (file) {
-          pdfUpload.value = '';
-          pdfStatus.textContent = '';
-        }
-        
       } catch (e) {
         console.error(e);
-        statusEl.textContent = file ? 'Fejl ved læsning af PDF: ' + e.message : 'Fejl: ' + e.message;
+        statusEl.textContent = 'Fejl: ' + e.message;
       }
     }
 
     el('generateBtn').onclick = generate;
     el('clearBtn').onclick = () => { 
       plan.value = ''; 
-      pdfUpload.value = '';
-      pdfStatus.textContent = '';
       suggestionsEl.innerHTML = ''; 
       statusEl.textContent = ''; 
     };
