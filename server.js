@@ -5,7 +5,7 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import dotenv from 'dotenv';
-import pdfParse from 'pdf-parse';
+import { createReadStream } from 'fs';
 
 dotenv.config();
 
@@ -97,13 +97,8 @@ app.post('/api/generate-from-pdf', upload.single('pdf'), async (req, res) => {
     // Extract text from PDF
     const pdfData = await pdfParse(pdfBuffer);
     const extractedText = pdfData.text;
-    
-    // Clean up uploaded file
-    fs.unlinkSync(req.file.path);
-    
-    if (!extractedText || extractedText.trim().length < 50) {
-      return res.status(400).json({ error: 'PDF indeholder ikke nok tekst til at generere forslag' });
-    }
+    // Convert PDF to base64 for OpenAI
+    const base64Pdf = pdfBuffer.toString('base64');
 
     const model = process.env.OPENAI_MODEL || 'gpt-4o-mini';
     
@@ -131,7 +126,7 @@ Fokuser på praktiske, implementerbare forslag der direkte adresserer læringsbe
         },
         {
           role: 'user',
-          content: `Analyser denne læringsplan og foreslå 3 konkrete tiltag:\n\n${extractedText}`
+          content: `Analyser denne PDF læringsplan og foreslå 3 konkrete tiltag. PDF indhold: ${base64Pdf.substring(0, 1000)}...`
         }
       ],
       temperature: 0.7,
