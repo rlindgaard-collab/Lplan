@@ -227,7 +227,7 @@
             ">
           </div>
           <div style="padding-top: 28px;">
-            <button id="generateFromPdfBtn" class="secondary" disabled>Lav forslag fra PDF</button>
+            <span class="muted" style="font-size: 12px;">PDF vil automatisk blive brugt hvis uploadet</span>
           </div>
         </div>
         <div id="pdfStatus" class="muted" style="margin-top: 8px;"></div>
@@ -259,7 +259,6 @@
     const el = (id) => document.getElementById(id);
     const plan = el('plan');
     const pdfUpload = el('pdfUpload');
-    const generateFromPdfBtn = el('generateFromPdfBtn');
     const pdfStatus = el('pdfStatus');
     const statusEl = el('status');
     const suggestionsEl = el('suggestions');
@@ -270,10 +269,8 @@
     pdfUpload.onchange = () => {
       const file = pdfUpload.files[0];
       if (file) {
-        generateFromPdfBtn.disabled = false;
         pdfStatus.textContent = `📄 ${file.name} (${(file.size / 1024 / 1024).toFixed(1)} MB)`;
       } else {
-        generateFromPdfBtn.disabled = true;
         pdfStatus.textContent = '';
       }
     };
@@ -340,8 +337,6 @@
         generateFromPdfBtn.disabled = false;
       }
     }
-
-    generateFromPdfBtn.onclick = generateFromPDF;
 
     function loadSaved() {
       const data = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
@@ -456,16 +451,39 @@
     }
 
     async function generate() {
+      const file = pdfUpload.files[0];
       const text = plan.value.trim();
-      if (text.length < 50) { alert('Indsæt en længere læringsplan.'); return; }
+      
+      // Check if we have either PDF or text
+      if (!file && text.length < 50) { 
+        alert('Indsæt en længere læringsplan eller upload en PDF.'); 
+        return; 
+      }
+      
       statusEl.textContent = 'Genererer forslag…';
       suggestionsEl.innerHTML = '';
+      
       try {
-        const res = await fetch('/api/generate', {
-          method: 'POST',
-          headers: {'Content-Type': 'application/json'},
-          body: JSON.stringify({ planText: text })
-        });
+        let res;
+        
+        if (file) {
+          // Use PDF
+          const formData = new FormData();
+          formData.append('pdf', file);
+          
+          res = await fetch('/api/generate-from-pdf', {
+            method: 'POST',
+            body: formData
+          });
+        } else {
+          // Use text
+          res = await fetch('/api/generate', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ planText: text })
+          });
+        }
+        
         const data = await res.json();
         if (!res.ok) throw new Error(data?.error || 'Fejl');
 
@@ -498,9 +516,16 @@
           suggestionsEl.appendChild(card);
         });
         statusEl.textContent = '';
+        
+        // Clear inputs after successful generation
+        if (file) {
+          pdfUpload.value = '';
+          pdfStatus.textContent = '';
+        }
+        
       } catch (e) {
         console.error(e);
-        statusEl.textContent = 'Fejl: ' + e.message;
+        statusEl.textContent = file ? 'Fejl ved læsning af PDF: ' + e.message : 'Fejl: ' + e.message;
       }
     }
 
@@ -509,7 +534,6 @@
       plan.value = ''; 
       pdfUpload.value = '';
       pdfStatus.textContent = '';
-      generateFromPdfBtn.disabled = true;
       suggestionsEl.innerHTML = ''; 
       statusEl.textContent = ''; 
     };
