@@ -6,8 +6,6 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import cors from 'cors';
 import OpenAI from 'openai';
-import multer from 'multer';
-import * as pdfjsLib from 'pdfjs-dist/build/pdf.mjs';
 
 dotenv.config();
 
@@ -20,19 +18,6 @@ const port = process.env.PORT || 3000;
 // Basic CORS (same-origin by default; tweak if hosting frontend separately)
 app.use(cors());
 app.use(bodyParser.json({ limit: '1mb' }));
-
-// Configure multer for file uploads
-const upload = multer({ 
-  storage: multer.memoryStorage(),
-  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB limit
-  fileFilter: (req, file, cb) => {
-    if (file.mimetype === 'application/pdf') {
-      cb(null, true);
-    } else {
-      cb(new Error('Kun PDF-filer er tilladt'));
-    }
-  }
-});
 
 // Serve static files
 app.use(express.static(path.join(__dirname, 'public')));
@@ -53,40 +38,6 @@ const openai = new OpenAI({
 // Health check
 app.get('/api/health', (_req, res) => {
   res.json({ ok: true });
-});
-
-// Extract text from uploaded PDF
-app.post('/api/extract-pdf', dailyLimiter, upload.single('pdf'), async (req, res) => {
-  try {
-    if (!req.file) {
-      return res.status(400).json({ error: 'Ingen PDF-fil uploadet.' });
-    }
-
-    // Load PDF document
-    const loadingTask = pdfjsLib.getDocument({ data: req.file.buffer });
-    const pdf = await loadingTask.promise;
-    
-    let text = '';
-    
-    // Extract text from all pages
-    for (let i = 1; i <= pdf.numPages; i++) {
-      const page = await pdf.getPage(i);
-      const textContent = await page.getTextContent();
-      const pageText = textContent.items.map(item => item.str).join(' ');
-      text += pageText + ' ';
-    }
-    
-    const extractedText = text.trim();
-    
-    if (extractedText.length < 50) {
-      return res.status(400).json({ error: 'PDF\'en indeholder ikke nok tekst til at danne en læringsplan.' });
-    }
-
-    res.json({ text: extractedText });
-  } catch (err) {
-    console.error('PDF extraction error:', err);
-    res.status(500).json({ error: 'Kunne ikke læse PDF-filen. Sørg for at det er en gyldig PDF med tekst.' });
-  }
 });
 
 // Generate actionable suggestions from a learning plan
