@@ -210,8 +210,26 @@
       <h2>Indsæt læringsplan</h2>
       <p class="muted">Tip: Du kan også eksportere Google Docs til .txt og indsætte teksten her.</p>
       
+      <div class="upload-section" style="margin-bottom: 16px;">
+        <div style="margin-bottom: 8px;">
+          <label for="pdfUpload" style="display: block; font-weight: 600; color: #e2e8f0;">📄 Upload PDF:</label>
+        </div>
+        <input type="file" id="pdfUpload" accept=".pdf" style="
+          width: 100%; 
+          padding: 12px; 
+          border-radius: 8px; 
+          border: 1px solid #475569; 
+          background: rgba(15, 23, 42, 0.8);
+          color: #e2e8f0;
+          font-family: inherit;
+          font-size: 14px;
+          transition: all 0.3s ease;
+        ">
+        <div id="pdfStatus" class="muted" style="margin-top: 8px;"></div>
+      </div>
+      
       <div style="margin-bottom: 8px;">
-        <label for="plan" style="display: block; font-weight: 600; color: #e2e8f0;">✏️ Skriv/indsæt læringsplan:</label>
+        <label for="plan" style="display: block; font-weight: 600; color: #e2e8f0;">✏️ Eller skriv/indsæt tekst:</label>
       </div>
       <textarea id="plan" placeholder="Indsæt din læringsplan her..."></textarea>
       <div class="row" style="margin-top:12px">
@@ -235,10 +253,22 @@
   <script>
     const el = (id) => document.getElementById(id);
     const plan = el('plan');
+    const pdfUpload = el('pdfUpload');
+    const pdfStatus = el('pdfStatus');
     const statusEl = el('status');
     const suggestionsEl = el('suggestions');
     const savedEl = el('saved');
     const STORAGE_KEY = 'lp_saved_actions_v1';
+
+    // PDF upload handling
+    pdfUpload.onchange = () => {
+      const file = pdfUpload.files[0];
+      if (file) {
+        pdfStatus.textContent = `📄 ${file.name} (${(file.size / 1024 / 1024).toFixed(1)} MB)`;
+      } else {
+        pdfStatus.textContent = '';
+      }
+    };
 
     function loadSaved() {
       const data = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
@@ -353,10 +383,12 @@
     }
 
     async function generate() {
+      const file = pdfUpload.files[0];
       const text = plan.value.trim();
       
-      if (text.length < 50) { 
-        alert('Indsæt en længere læringsplan (mindst 50 tegn).'); 
+      // Check if we have either PDF or text
+      if (!file && text.length < 50) { 
+        alert('Upload en PDF eller indsæt en længere læringsplan (mindst 50 tegn).'); 
         return; 
       }
       
@@ -364,11 +396,25 @@
       suggestionsEl.innerHTML = '';
       
       try {
-        const res = await fetch('/api/generate', {
-          method: 'POST',
-          headers: {'Content-Type': 'application/json'},
-          body: JSON.stringify({ planText: text })
-        });
+        let res;
+        
+        if (file) {
+          // Use PDF
+          const formData = new FormData();
+          formData.append('pdf', file);
+          
+          res = await fetch('/api/generate-from-pdf', {
+            method: 'POST',
+            body: formData
+          });
+        } else {
+          // Use text
+          res = await fetch('/api/generate', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ planText: text })
+          });
+        }
         
         const data = await res.json();
         if (!res.ok) throw new Error(data?.error || 'Fejl');
@@ -403,15 +449,23 @@
         });
         statusEl.textContent = '';
         
+        // Clear inputs after successful generation
+        if (file) {
+          pdfUpload.value = '';
+          pdfStatus.textContent = '';
+        }
+        
       } catch (e) {
         console.error(e);
-        statusEl.textContent = 'Fejl: ' + e.message;
+        statusEl.textContent = file ? 'Fejl ved læsning af PDF: ' + e.message : 'Fejl: ' + e.message;
       }
     }
 
     el('generateBtn').onclick = generate;
     el('clearBtn').onclick = () => { 
       plan.value = ''; 
+      pdfUpload.value = '';
+      pdfStatus.textContent = '';
       suggestionsEl.innerHTML = ''; 
       statusEl.textContent = ''; 
     };
