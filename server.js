@@ -7,7 +7,7 @@ import { fileURLToPath } from 'url';
 import cors from 'cors';
 import OpenAI from 'openai';
 import multer from 'multer';
-import pdfjsLib from 'pdfjs-dist/build/pdf.mjs';
+import * as pdfjsLib from 'pdfjs-dist/build/pdf.mjs';
 
 dotenv.config();
 
