@@ -15,6 +15,6 @@
     "express-rate-limit": "^7.4.0",
     "multer": "^2.0.2",
     "openai": "^4.57.0",
-    "pdf-parse": "^1.1.1"
+    "pdf2pic": "^3.2.0"
   }
 }
