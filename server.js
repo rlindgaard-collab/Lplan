@@ -7,7 +7,7 @@ import { fileURLToPath } from 'url';
 import cors from 'cors';
 import OpenAI from 'openai';
 import multer from 'multer';
-import { PDFDocument } from 'pdf-lib';
+import pdf from 'pdf-parse';
 
 dotenv.config();
 
@@ -63,18 +63,9 @@ app.post('/api/extract-pdf', dailyLimiter, upload.single('pdf'), async (req, res
     }
 
     const pdfBuffer = req.file.buffer;
-    const pdfDoc = await PDFDocument.load(pdfBuffer);
-    const pages = pdfDoc.getPages();
+    const data = await pdf(pdfBuffer);
+    const extractedText = data.text.trim();
     
-    let extractedText = '';
-    for (const page of pages) {
-      const textContent = await page.getTextContent();
-      if (textContent && textContent.items) {
-        extractedText += textContent.items.map(item => item.str).join(' ') + '\n';
-      }
-    }
-    
-    extractedText = extractedText.trim();
     if (extractedText.length < 50) {
       return res.status(400).json({ error: 'PDF\'en indeholder ikke nok tekst til at danne en læringsplan.' });
     }
