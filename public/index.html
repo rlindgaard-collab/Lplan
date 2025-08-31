@@ -209,6 +209,33 @@
     <section class="card">
       <h2>Indsæt læringsplan</h2>
       <p class="muted">Tip: Du kan også eksportere Google Docs til .txt og indsætte teksten her.</p>
+      
+      <div class="upload-section" style="margin-bottom: 16px;">
+        <div class="row" style="gap: 16px; align-items: flex-start;">
+          <div style="flex: 1;">
+            <label for="pdfUpload" style="display: block; margin-bottom: 8px; font-weight: 600; color: #e2e8f0;">📄 Upload PDF:</label>
+            <input type="file" id="pdfUpload" accept=".pdf" style="
+              width: 100%; 
+              padding: 12px; 
+              border-radius: 8px; 
+              border: 1px solid #475569; 
+              background: rgba(15, 23, 42, 0.8);
+              color: #e2e8f0;
+              font-family: inherit;
+              font-size: 14px;
+              transition: all 0.3s ease;
+            ">
+          </div>
+          <div style="padding-top: 28px;">
+            <button id="extractBtn" class="secondary" disabled>Læs PDF</button>
+          </div>
+        </div>
+        <div id="pdfStatus" class="muted" style="margin-top: 8px;"></div>
+      </div>
+      
+      <div style="margin-bottom: 8px;">
+        <label for="plan" style="display: block; font-weight: 600; color: #e2e8f0;">✏️ Eller skriv/indsæt tekst:</label>
+      </div>
       <textarea id="plan" placeholder="Indsæt din læringsplan her..."></textarea>
       <div class="row" style="margin-top:12px">
         <button id="generateBtn">Foreslå 3 tiltag</button>
@@ -231,10 +258,60 @@
   <script>
     const el = (id) => document.getElementById(id);
     const plan = el('plan');
+    const pdfUpload = el('pdfUpload');
+    const extractBtn = el('extractBtn');
+    const pdfStatus = el('pdfStatus');
     const statusEl = el('status');
     const suggestionsEl = el('suggestions');
     const savedEl = el('saved');
     const STORAGE_KEY = 'lp_saved_actions_v1';
+
+    // PDF upload handling
+    pdfUpload.onchange = () => {
+      const file = pdfUpload.files[0];
+      if (file) {
+        extractBtn.disabled = false;
+        pdfStatus.textContent = `📄 ${file.name} (${(file.size / 1024 / 1024).toFixed(1)} MB)`;
+      } else {
+        extractBtn.disabled = true;
+        pdfStatus.textContent = '';
+      }
+    };
+
+    async function extractPDF() {
+      const file = pdfUpload.files[0];
+      if (!file) return;
+      
+      pdfStatus.textContent = 'Læser PDF...';
+      extractBtn.disabled = true;
+      
+      try {
+        const formData = new FormData();
+        formData.append('pdf', file);
+        
+        const res = await fetch('/api/extract-pdf', {
+          method: 'POST',
+          body: formData
+        });
+        
+        const data = await res.json();
+        if (!res.ok) throw new Error(data?.error || 'Fejl ved læsning af PDF');
+        
+        plan.value = data.text;
+        pdfStatus.textContent = `✅ PDF læst! ${data.text.length} tegn ekstraheret.`;
+        
+        // Clear file input
+        pdfUpload.value = '';
+        extractBtn.disabled = true;
+        
+      } catch (err) {
+        console.error(err);
+        pdfStatus.textContent = `❌ Fejl: ${err.message}`;
+        extractBtn.disabled = false;
+      }
+    }
+
+    extractBtn.onclick = extractPDF;
 
     function loadSaved() {
       const data = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
@@ -400,6 +477,9 @@
     el('generateBtn').onclick = generate;
     el('clearBtn').onclick = () => { 
       plan.value = ''; 
+      pdfUpload.value = '';
+      pdfStatus.textContent = '';
+      extractBtn.disabled = true;
       suggestionsEl.innerHTML = ''; 
       statusEl.textContent = ''; 
     };
